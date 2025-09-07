@@ -83,3 +83,7 @@ jobs:
           sleep 5
           echo "🌍 URL do PufferPanel:"
           cat ngrok.log | grep -o "https://[a-z0-9-]*\.ngrok-free\.app" | head -n 1
+
+      # 9️⃣ Manter job ativo (24/7 temporário) 
+      - name: Manter job ativo 
+        run: tail -f /dev/null
