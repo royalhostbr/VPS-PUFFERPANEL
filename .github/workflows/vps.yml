@@ -1,0 +1,85 @@
+name: VPS SSHX + PufferPanel + Ngrok
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *' # Executa todo início de hora
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  root_apolinario:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1️⃣ Inicia VPS temporária via SSHX
+      - name: Iniciando VPS temporária (sshx.io)
+        run: curl -sSf https://sshx.io/get | sh -s run &
+
+      # 2️⃣ Configura Docker
+      - name: Configurar Docker
+        uses: docker/setup-buildx-action@v2
+
+      # 3️⃣ Subir PufferPanel
+      - name: Subir PufferPanel
+        run: |
+          sudo mkdir -p /var/lib/pufferpanel
+          docker volume create pufferpanel-config
+          docker run -d --name pufferpanel \
+            -p 8080:8080 \
+            -p 5657:5657 \
+            -v pufferpanel-config:/etc/pufferpanel \
+            -v /var/lib/pufferpanel:/var/lib/pufferpanel \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --restart=on-failure \
+            pufferpanel/pufferpanel:latest
+
+      # 4️⃣ Esperar inicialização completa do PufferPanel
+      - name: Esperar PufferPanel iniciar
+        run: |
+          echo "Aguardando PufferPanel iniciar (até 90s)..."
+          for i in {1..18}; do
+            if docker logs pufferpanel 2>&1 | grep -q "Started"; then
+              echo "✅ PufferPanel iniciado!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "⚠️ Timeout: PufferPanel pode não ter iniciado"
+          echo "🔎 Últimos logs do container:"
+          docker logs pufferpanel | tail -n 50
+
+      # 5️⃣ Criar usuário admin
+      - name: Criar usuário admin
+        run: |
+          docker exec pufferpanel /pufferpanel/pufferpanel user add \
+            --name adminroot \
+            --password root123 \
+            --email seugmail@example.com \
+            --admin || true
+
+      # 6️⃣ Instalar Ngrok
+      - name: Instalar Ngrok
+        run: |
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
+            | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install -y ngrok
+
+      # 7️⃣ Configurar token Ngrok (use secrets!)
+      - name: Configurar Ngrok
+        run: ngrok config add-authtoken 2ykhz9WSwDPjjvNhlF2cOQ7iNEC_6ufv1xzpCjR8dpnftuC6Z
+
+      # 8️⃣ Expor painel PufferPanel via Ngrok
+      - name: Expor PufferPanel na web com Ngrok
+        run: |
+          nohup ngrok http 8080 --log=stdout > ngrok.log 2>&1 &
+          sleep 5
+          echo "🌍 URL do PufferPanel:"
+          cat ngrok.log | grep -o "https://[a-z0-9-]*\.ngrok-free\.app" | head -n 1
