@@ -59,7 +59,7 @@ jobs:
           docker exec pufferpanel /pufferpanel/pufferpanel user add \
             --name adminroot \
             --password root123 \
-            --email seugmail@example.com \
+            --email admin@gmail.com \
             --admin || true
 
       # 6️⃣ Instalar Ngrok
